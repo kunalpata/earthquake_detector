@@ -1,0 +1,13 @@
+{
+  // Project name on Cloudflare Pages — must match the name you created in the dashboard
+  "name": "quakepulse",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "pages_build_output_dir": ".open-next/assets",
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets"
+  },
+  // The OpenNext adapter emits a _worker.js bundle for the serverless functions
+  "main": ".open-next/worker.js"
+}

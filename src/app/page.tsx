@@ -94,16 +94,22 @@ export default function HomePage() {
           )}
         </div>
 
-        <div className="ml-auto text-xs text-gray-400">
-          Data:{" "}
-          <a
-            href="https://earthquake.usgs.gov/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-400 hover:text-blue-300"
-          >
-            USGS Earthquake Hazards Program
-          </a>
+        <div className="ml-auto flex items-center gap-4 text-xs text-gray-400">
+          <span>
+            Data:{" "}
+            <a
+              href="https://earthquake.usgs.gov/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-400 hover:text-blue-300"
+            >
+              USGS Earthquake Hazards Program
+            </a>
+          </span>
+          <span className="hidden sm:flex items-center gap-3 text-gray-600">
+            <a href="/privacy" className="hover:text-gray-400 transition-colors">Privacy</a>
+            <a href="/terms" className="hover:text-gray-400 transition-colors">Terms</a>
+          </span>
         </div>
       </header>
 
