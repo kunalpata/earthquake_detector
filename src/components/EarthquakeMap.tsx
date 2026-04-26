@@ -21,16 +21,24 @@ interface Props {
   colorMode: "magnitude" | "depth";
 }
 
-function FlyToSelected({ features, selectedId }: { features: EarthquakeFeature[]; selectedId: string | null }) {
+function FlyToSelected({
+  features,
+  selectedId,
+}: {
+  features: EarthquakeFeature[];
+  selectedId: string | null;
+}) {
   const map = useMap();
   const prevId = useRef<string | null>(null);
 
   useEffect(() => {
     if (!selectedId || selectedId === prevId.current) return;
     const f = features.find((q) => q.id === selectedId);
-    if (!f) return;
+    // Guard: skip if geometry is missing (malformed feature)
+    if (!f?.geometry?.coordinates) return;
     const [lng, lat] = f.geometry.coordinates;
-    map.flyTo([lat, lng], Math.max(map.getZoom(), 5), { duration: 1.2 });
+    // Always zoom to at least 7 so the user lands on a useful view
+    map.flyTo([lat, lng], Math.max(map.getZoom(), 7), { duration: 1.2 });
     prevId.current = selectedId;
   }, [selectedId, features, map]);
 
@@ -54,20 +62,21 @@ export default function EarthquakeMap({ features, selectedId, onSelect, colorMod
       <FlyToSelected features={features} selectedId={selectedId} />
 
       {features.map((quake) => {
+        // Guard against malformed features from USGS (no crash)
+        if (!quake.geometry?.coordinates) return null;
+
         const [lng, lat, depth] = quake.geometry.coordinates;
         const mag = quake.properties.mag;
         const isSelected = quake.id === selectedId;
 
         const color =
-          colorMode === "depth"
-            ? getDepthColor(depth)
-            : getMagnitudeColor(mag);
+          colorMode === "depth" ? getDepthColor(depth) : getMagnitudeColor(mag);
 
         return (
           <CircleMarker
             key={quake.id}
             center={[lat, lng]}
-            radius={getMagnitudeRadius(mag) * (isSelected ? 1.5 : 1)}
+            radius={getMagnitudeRadius(mag) * (isSelected ? 1.4 : 1)}
             pathOptions={{
               fillColor: color,
               fillOpacity: isSelected ? 1 : 0.7,
@@ -81,10 +90,7 @@ export default function EarthquakeMap({ features, selectedId, onSelect, colorMod
                 <div className="font-bold text-sm mb-1">{quake.properties.title}</div>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-300">
                   <span className="text-gray-400">Magnitude</span>
-                  <span
-                    className="font-semibold"
-                    style={{ color: getMagnitudeColor(mag) }}
-                  >
+                  <span className="font-semibold" style={{ color: getMagnitudeColor(mag) }}>
                     {mag?.toFixed(1) ?? "—"} ({getMagnitudeLabel(mag)})
                   </span>
 
@@ -94,7 +100,7 @@ export default function EarthquakeMap({ features, selectedId, onSelect, colorMod
                   <span className="text-gray-400">Time</span>
                   <span>{formatRelativeTime(quake.properties.time)}</span>
 
-                  {quake.properties.felt && (
+                  {quake.properties.felt != null && quake.properties.felt > 0 && (
                     <>
                       <span className="text-gray-400">Felt by</span>
                       <span>{quake.properties.felt.toLocaleString()} people</span>

@@ -1,7 +1,8 @@
 "use client";
 
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { Filters, TimeRange } from "@/types/earthquake";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, RotateCcw } from "lucide-react";
 
 interface Props {
   filters: Filters;
@@ -11,6 +12,7 @@ interface Props {
   onRefresh: () => void;
   isLoading: boolean;
   lastUpdated: number | null;
+  defaultFilters: Filters;
 }
 
 const TIME_RANGES: { value: TimeRange; label: string }[] = [
@@ -20,6 +22,18 @@ const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: "30d", label: "30 Days" },
 ];
 
+// Debounce hook: fires `fn` only after `delay`ms of quiet
+function useDebouncedCallback<T>(fn: (v: T) => void, delay: number) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  return useCallback(
+    (v: T) => {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => fn(v), delay);
+    },
+    [fn, delay]
+  );
+}
+
 export default function FilterPanel({
   filters,
   onChange,
@@ -28,7 +42,32 @@ export default function FilterPanel({
   onRefresh,
   isLoading,
   lastUpdated,
+  defaultFilters,
 }: Props) {
+  // Local slider state gives instant visual feedback;
+  // the debounced version fires the expensive re-filter after 120ms of quiet
+  const [localMag, setLocalMag] = useState(filters.minMagnitude);
+  const [localDepth, setLocalDepth] = useState(filters.maxDepth);
+
+  // Sync if parent resets filters externally (e.g. reset button)
+  useEffect(() => setLocalMag(filters.minMagnitude), [filters.minMagnitude]);
+  useEffect(() => setLocalDepth(filters.maxDepth), [filters.maxDepth]);
+
+  const commitMag = useDebouncedCallback(
+    (v: number) => onChange({ ...filters, minMagnitude: v }),
+    120
+  );
+  const commitDepth = useDebouncedCallback(
+    (v: number) => onChange({ ...filters, maxDepth: v }),
+    120
+  );
+
+  const isDefault =
+    filters.timeRange === defaultFilters.timeRange &&
+    filters.minMagnitude === defaultFilters.minMagnitude &&
+    filters.maxDepth === defaultFilters.maxDepth &&
+    filters.showTsunamiOnly === defaultFilters.showTsunamiOnly;
+
   return (
     <div className="bg-gray-900 border-b border-gray-800 px-4 py-3 flex flex-wrap items-center gap-4">
       {/* Time Range */}
@@ -51,34 +90,42 @@ export default function FilterPanel({
         </div>
       </div>
 
-      {/* Min Magnitude */}
+      {/* Min Magnitude — debounced */}
       <div className="flex items-center gap-2">
         <span className="text-xs text-gray-400 font-medium uppercase tracking-wide whitespace-nowrap">
-          Min M {filters.minMagnitude.toFixed(1)}
+          Min M {localMag.toFixed(1)}
         </span>
         <input
           type="range"
           min="0"
           max="9"
           step="0.5"
-          value={filters.minMagnitude}
-          onChange={(e) => onChange({ ...filters, minMagnitude: parseFloat(e.target.value) })}
+          value={localMag}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            setLocalMag(v);
+            commitMag(v);
+          }}
           className="w-28 accent-orange-500"
         />
       </div>
 
-      {/* Max Depth */}
+      {/* Max Depth — debounced */}
       <div className="flex items-center gap-2">
         <span className="text-xs text-gray-400 font-medium uppercase tracking-wide whitespace-nowrap">
-          Max Depth {filters.maxDepth} km
+          Max Depth {localDepth} km
         </span>
         <input
           type="range"
           min="10"
           max="700"
           step="10"
-          value={filters.maxDepth}
-          onChange={(e) => onChange({ ...filters, maxDepth: parseInt(e.target.value) })}
+          value={localDepth}
+          onChange={(e) => {
+            const v = parseInt(e.target.value);
+            setLocalDepth(v);
+            commitDepth(v);
+          }}
           className="w-28 accent-orange-500"
         />
       </div>
@@ -104,7 +151,7 @@ export default function FilterPanel({
       </div>
 
       {/* Tsunami filter */}
-      <label className="flex items-center gap-2 cursor-pointer">
+      <label className="flex items-center gap-2 cursor-pointer select-none">
         <input
           type="checkbox"
           checked={filters.showTsunamiOnly}
@@ -113,6 +160,18 @@ export default function FilterPanel({
         />
         <span className="text-xs text-gray-300">Tsunami only</span>
       </label>
+
+      {/* Reset */}
+      {!isDefault && (
+        <button
+          onClick={() => onChange(defaultFilters)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 text-xs font-medium transition-colors"
+          title="Reset filters to defaults"
+        >
+          <RotateCcw size={11} />
+          Reset
+        </button>
+      )}
 
       {/* Refresh */}
       <div className="ml-auto flex items-center gap-3">
