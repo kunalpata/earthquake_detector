@@ -212,7 +212,10 @@ export default function HomePage() {
                   <span className="text-yellow-300"> — all {filteredFeatures.length.toLocaleString()} events in stats &amp; list</span>
                 </div>
               )}
-              <div className="bg-gray-900/90 backdrop-blur-sm border border-gray-800 rounded-lg px-3 py-2 text-xs text-gray-300">
+              <div
+                data-testid="map-event-count"
+                className="bg-gray-900/90 backdrop-blur-sm border border-gray-800 rounded-lg px-3 py-2 text-xs text-gray-300"
+              >
                 <span className="font-semibold text-white">{mapFeatures.length.toLocaleString()}</span> earthquakes on map
               </div>
             </div>
