@@ -4,13 +4,18 @@ import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import type { Filters } from "@/types/earthquake";
 import { useEarthquakes } from "@/hooks/useEarthquakes";
-import { filterEarthquakes, computeStats, buildDailyCounts } from "@/lib/utils";
+import {
+  filterEarthquakes,
+  computeStats,
+  buildDailyCounts,
+  limitForDisplay,
+} from "@/lib/utils";
 import FilterPanel from "@/components/FilterPanel";
 import StatsPanel from "@/components/StatsPanel";
 import EarthquakeList from "@/components/EarthquakeList";
 import MapLegend from "@/components/MapLegend";
 import TrendChart from "@/components/TrendChart";
-import { Activity, ChevronLeft, ChevronRight } from "lucide-react";
+import { Activity, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 
 const EarthquakeMap = dynamic(() => import("@/components/EarthquakeMap"), {
   ssr: false,
@@ -44,6 +49,13 @@ export default function HomePage() {
     [features, filters]
   );
 
+  // Cap map markers to prevent browser freeze on large datasets (30d = ~12K events).
+  // Stats and list always use the full filtered set; only the map is capped.
+  const { displayed: mapFeatures, capped } = useMemo(
+    () => limitForDisplay(filteredFeatures),
+    [filteredFeatures]
+  );
+
   const stats = useMemo(() => computeStats(filteredFeatures), [filteredFeatures]);
   const dailyCounts = useMemo(() => buildDailyCounts(filteredFeatures), [filteredFeatures]);
 
@@ -72,7 +84,7 @@ export default function HomePage() {
           ) : error ? (
             <span className="flex items-center gap-1.5 text-xs text-red-400">
               <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
-              API error
+              USGS unavailable — retrying
             </span>
           ) : (
             <span className="flex items-center gap-1.5 text-xs text-green-400">
@@ -104,81 +116,109 @@ export default function HomePage() {
         onRefresh={refresh}
         isLoading={isLoading}
         lastUpdated={lastUpdated}
+        defaultFilters={DEFAULT_FILTERS}
       />
 
-      {/* Main content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <div
-          className={`flex flex-col bg-gray-900 border-r border-gray-800 transition-all duration-300 shrink-0 ${
-            sidebarOpen ? "w-80" : "w-0 overflow-hidden"
-          }`}
-        >
-          <div className="flex flex-col h-full overflow-hidden">
-            {/* Stats */}
-            <div className="shrink-0">
-              <StatsPanel stats={stats} />
+      {/* Full-page error state — only shown on first load failure (no stale data) */}
+      {error && features.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4 text-center max-w-sm">
+            <AlertCircle size={40} className="text-red-400" />
+            <div>
+              <h2 className="text-lg font-semibold text-white">Could not load earthquake data</h2>
+              <p className="text-sm text-gray-400 mt-1">
+                The USGS API is unreachable. Check your internet connection or try refreshing.
+              </p>
+            </div>
+            <button
+              onClick={() => refresh()}
+              className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium transition-colors"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Main content */
+        <div className="flex flex-1 overflow-hidden relative">
+          {/* Sidebar */}
+          <div
+            className={`flex flex-col bg-gray-900 border-r border-gray-800 transition-all duration-300 shrink-0 ${
+              sidebarOpen ? "w-80" : "w-0 overflow-hidden"
+            }`}
+          >
+            <div className="flex flex-col h-full overflow-hidden">
+              {/* Stats */}
+              <div className="shrink-0">
+                <StatsPanel stats={stats} />
+              </div>
+
+              {/* Trend chart */}
+              {dailyCounts.length > 1 && (
+                <div className="shrink-0 px-4 pb-3">
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                    Activity Trend
+                  </div>
+                  <TrendChart data={dailyCounts} />
+                </div>
+              )}
+
+              {/* Earthquake list */}
+              <div className="flex-1 overflow-hidden flex flex-col border-t border-gray-800">
+                <div className="px-4 py-2 shrink-0">
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                    Events
+                  </div>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <EarthquakeList
+                    features={filteredFeatures}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Sidebar toggle — positioned relative to the flex container */}
+          <button
+            onClick={() => setSidebarOpen((v) => !v)}
+            className="absolute top-1/2 -translate-y-1/2 z-20 w-5 h-12 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-r-lg flex items-center justify-center text-gray-400 hover:text-white transition-all duration-300"
+            style={{ left: sidebarOpen ? "320px" : "0px" }}
+          >
+            {sidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+          </button>
+
+          {/* Map area */}
+          <div className="flex-1 relative overflow-hidden">
+            <EarthquakeMap
+              features={mapFeatures}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              colorMode={colorMode}
+            />
+
+            {/* Map overlay: legend */}
+            <div className="absolute top-4 right-4 z-[1000]">
+              <MapLegend colorMode={colorMode} />
             </div>
 
-            {/* Trend chart */}
-            {dailyCounts.length > 1 && (
-              <div className="shrink-0 px-4 pb-3">
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-                  Activity Trend
+            {/* Map overlay: event count + capped warning */}
+            <div className="absolute bottom-4 left-4 z-[1000] flex flex-col gap-2 items-start">
+              {capped && (
+                <div className="bg-yellow-900/90 backdrop-blur-sm border border-yellow-700 rounded-lg px-3 py-2 text-xs text-yellow-200 max-w-[280px]">
+                  <span className="font-semibold">Map showing top 3,000 by magnitude</span>
+                  <span className="text-yellow-300"> — all {filteredFeatures.length.toLocaleString()} events in stats &amp; list</span>
                 </div>
-                <TrendChart data={dailyCounts} />
-              </div>
-            )}
-
-            {/* Earthquake list */}
-            <div className="flex-1 overflow-hidden flex flex-col border-t border-gray-800">
-              <div className="px-4 py-2 shrink-0">
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-                  Events
-                </div>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <EarthquakeList
-                  features={filteredFeatures}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                />
+              )}
+              <div className="bg-gray-900/90 backdrop-blur-sm border border-gray-800 rounded-lg px-3 py-2 text-xs text-gray-300">
+                <span className="font-semibold text-white">{mapFeatures.length.toLocaleString()}</span> earthquakes on map
               </div>
             </div>
           </div>
         </div>
-
-        {/* Sidebar toggle */}
-        <button
-          onClick={() => setSidebarOpen((v) => !v)}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-5 h-12 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-r-lg flex items-center justify-center text-gray-400 hover:text-white transition-all"
-          style={{ left: sidebarOpen ? "320px" : "0px" }}
-        >
-          {sidebarOpen ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
-        </button>
-
-        {/* Map area */}
-        <div className="flex-1 relative overflow-hidden">
-          <EarthquakeMap
-            features={filteredFeatures}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            colorMode={colorMode}
-          />
-
-          {/* Map overlay: legend */}
-          <div className="absolute top-4 right-4 z-[1000]">
-            <MapLegend colorMode={colorMode} />
-          </div>
-
-          {/* Map overlay: event count */}
-          <div className="absolute bottom-4 left-4 z-[1000]">
-            <div className="bg-gray-900/90 backdrop-blur-sm border border-gray-800 rounded-lg px-3 py-2 text-xs text-gray-300">
-              <span className="font-semibold text-white">{filteredFeatures.length.toLocaleString()}</span> earthquakes displayed
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
